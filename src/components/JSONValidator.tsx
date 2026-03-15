@@ -218,7 +218,6 @@ export default function JSONValidator() {
                 automaticLayout: true,
                 padding: { top: 30 },
                 lineNumbersMinChars: 4,
-                backgroundColor: "#00000000",
                 cursorSmoothCaretAnimation: "on",
                 smoothScrolling: true,
                 renderLineHighlight: "none",
