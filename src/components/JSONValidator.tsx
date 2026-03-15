@@ -1,17 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Editor from "@monaco-editor/react";
-import { fixJSONWithAI, analyzeJSONWithAI } from "@/lib/ai";
 import { 
   ShieldCheck, 
-  ShieldAlert, 
   Sparkles, 
   AlignLeft, 
   FileCode, 
   Braces, 
   Loader2, 
-  Download, 
   Copy, 
   Trash2,
   Check,
@@ -25,12 +22,42 @@ export default function JSONValidator() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiInsight, setAiInsight] = useState<string>("");
   const [progress, setProgress] = useState<number>(0);
-  const [isMounted, setIsMounted] = useState(false);
+  
+  const worker = useRef<Worker | null>(null);
 
   useEffect(() => {
-    setIsMounted(true);
+    // Initialize Web Worker
+    worker.current = new Worker(new URL("../app/ai.worker.ts", import.meta.url));
+
+    worker.current.onmessage = (event) => {
+      const { type, data } = event.data;
+      if (type === 'progress') {
+        if (data.status === 'progress') setProgress(data.progress);
+      } else if (type === 'result') {
+        if (isFixing) {
+          setCode(data);
+          validateJSON(data);
+          setAiInsight("AI has attempted to fix the syntax.");
+          setIsFixing(false);
+        } else {
+          setAiInsight(data);
+          setIsAnalyzing(false);
+        }
+        setProgress(0);
+      } else if (type === 'error') {
+        setAiInsight(`AI Error: ${data}`);
+        setIsFixing(false);
+        setIsAnalyzing(false);
+        setProgress(0);
+      }
+    };
+
     validateJSON(code);
-  }, []);
+
+    return () => {
+      worker.current?.terminate();
+    };
+  }, [isFixing, isAnalyzing]);
 
   const validateJSON = (value: string | undefined) => {
     if (!value) {
@@ -62,34 +89,18 @@ export default function JSONValidator() {
     }
   };
 
-  const handleFixWithAI = async () => {
+  const handleFixWithAI = () => {
+    if (!worker.current) return;
     setIsFixing(true);
-    setAiInsight("AI is analyzing and fixing syntax...");
-    try {
-      const fixed = await fixJSONWithAI(code, (p: any) => {
-        if (p.status === "progress") setProgress(p.progress);
-      });
-      setCode(fixed);
-      validateJSON(fixed);
-      setAiInsight("AI has attempted to fix the syntax.");
-    } catch (e: any) {
-      setAiInsight(`AI Error: ${e.message}`);
-    } finally {
-      setIsFixing(false);
-      setProgress(0);
-    }
+    setAiInsight("AI background worker is fixing syntax...");
+    worker.current.postMessage({ type: 'fix', jsonString: code });
   };
 
-  const handleAnalyzeWithAI = async () => {
+  const handleAnalyzeWithAI = () => {
+    if (!worker.current) return;
     setIsAnalyzing(true);
-    try {
-      const insight = await analyzeJSONWithAI(code);
-      setAiInsight(insight);
-    } catch (e: any) {
-      setAiInsight(`AI Error: ${e.message}`);
-    } finally {
-      setIsAnalyzing(false);
-    }
+    setAiInsight("AI background worker is analyzing data...");
+    worker.current.postMessage({ type: 'analyze', jsonString: code });
   };
 
   const copyToClipboard = () => {
@@ -103,8 +114,6 @@ export default function JSONValidator() {
       setStatus({ type: "none", message: "" });
     }
   };
-
-  if (!isMounted) return null;
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#0a0a0a] text-white overflow-hidden">
@@ -162,7 +171,7 @@ export default function JSONValidator() {
           {progress > 0 && (
             <div className="p-4 bg-blue-950/20 border border-blue-900/30 rounded-xl space-y-2">
               <div className="flex justify-between text-[10px] font-bold">
-                <span>MODEL LOADING</span>
+                <span>AI MODEL LOADING</span>
                 <span>{Math.round(progress)}%</span>
               </div>
               <div className="w-full bg-blue-900/20 h-1.5 rounded-full overflow-hidden">
@@ -171,7 +180,7 @@ export default function JSONValidator() {
             </div>
           )}
           <div className="p-4 bg-[#1a1a1a] border border-[#222] rounded-xl text-[10px] text-gray-500 mt-4 leading-relaxed">
-            <p>Runs 100% in your browser using Transformers.js. No data leaves your machine.</p>
+            <p>Runs in an isolated background worker. No freezing, no data leaks.</p>
           </div>
         </div>
       </aside>
