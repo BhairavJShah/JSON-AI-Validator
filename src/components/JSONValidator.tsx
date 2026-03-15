@@ -83,6 +83,12 @@ export default function JSONValidator() {
     worker.current.postMessage({ type: 'analyze', jsonString: code });
   };
 
+  const handleEditorChange = (value: string | undefined) => {
+    const val = value || "";
+    setCode(val);
+    validateJSON(val);
+  };
+
   const formatJSON = () => {
     try {
       setCode(JSON.stringify(JSON.parse(code), null, 2));
